@@ -1,0 +1,16 @@
+import {readFile,mkdir,rename,open} from 'node:fs/promises';import {dirname} from 'node:path';import {randomUUID} from 'node:crypto';
+import {parseNear} from './policy.js';
+export interface Budget { version:1; ceiling:string; spent:string; agentAllowanceReserved:string; pending:Record<string,string>; breached?:boolean; entries:{id:string;kind:string;fee:string;transactionHash?:string}[]; }
+export class GasBudget {
+ private data!:Budget;
+ constructor(readonly path:string,readonly ceiling=parseNear('0.010')){}
+ async init(){try{this.data=JSON.parse(await readFile(this.path,'utf8'));if(this.data.ceiling!==this.ceiling)throw new Error('Gas ceiling mismatch.');}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;this.data={version:1,ceiling:this.ceiling,spent:'0',agentAllowanceReserved:'0',pending:{},entries:[]};await this.save();}}
+ private async save(){await mkdir(dirname(this.path),{recursive:true,mode:0o700});const temp=`${this.path}.${randomUUID()}.tmp`;const file=await open(temp,'wx',0o600);try{await file.writeFile(JSON.stringify(this.data,null,2));await file.sync();}finally{await file.close();}await rename(temp,this.path);const directory=await open(dirname(this.path),'r');try{await directory.sync();}finally{await directory.close();}}
+ view(){return structuredClone(this.data);}
+ total(){return BigInt(this.data.spent)+BigInt(this.data.agentAllowanceReserved)+Object.values(this.data.pending).reduce((n,v)=>n+BigInt(v),0n);}
+ async observeVerified(id:string,fee:string,hash:string){const old=this.data.entries.find(e=>e.id===id);if(old){if(old.fee!==fee||old.transactionHash!==hash)throw new Error('Verified fee conflict.');return;}delete this.data.pending[id];this.data.spent=(BigInt(this.data.spent)+BigInt(fee)).toString();this.data.entries.push({id,kind:'verified historical fee',fee,transactionHash:hash});if(this.total()>BigInt(this.ceiling))this.data.breached=true;await this.save();}
+ async reserve(id:string,maximum:string){if(this.data.breached)throw new Error('Gas budget breached; explicit revised approval required.');if(this.data.pending[id])return;if(this.total()+BigInt(maximum)>BigInt(this.ceiling))throw new Error('Aggregate setup/proof gas ceiling would be exceeded. No transaction sent.');this.data.pending[id]=maximum;await this.save();}
+ async reserveAgent(allowance:string){if(this.total()+BigInt(allowance)>BigInt(this.ceiling))throw new Error('Agent gas grant exceeds the remaining aggregate setup/proof budget.');this.data.agentAllowanceReserved=(BigInt(this.data.agentAllowanceReserved)+BigInt(allowance)).toString();await this.save();}
+ async settle(id:string,fee:string,hash:string){const reserved=this.data.pending[id];if(!reserved)throw new Error('Missing gas reservation.');if(BigInt(fee)>BigInt(reserved))throw new Error('Observed gas exceeds reserved bound; stop and inspect.');delete this.data.pending[id];this.data.spent=(BigInt(this.data.spent)+BigInt(fee)).toString();this.data.entries.push({id,kind:'owner transaction',fee,transactionHash:hash});await this.save();}
+}
+export function transactionFee(tx:any):string{const outcomes=[tx.transaction_outcome,...tx.receipts_outcome];return outcomes.reduce((n:bigint,r:any)=>n+BigInt(r.outcome.tokens_burnt),0n).toString();}

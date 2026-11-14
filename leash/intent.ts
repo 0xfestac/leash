@@ -1,0 +1,10 @@
+import {createHash} from 'node:crypto';import {serialize} from 'borsh';import {PublicKey} from 'near-api-js';import type {Policy,PaymentRequest} from './policy.js';
+export interface Signature {accountId:string;publicKey:string;signature:string;}
+export interface Grant {version:number;grantId:string;ownerAccountId:string;accountId:string;agentPublicKey:string;name:string;policy:Policy;active:boolean;gasAllowance:string;network:string;receiptPublicKey:string;}
+export interface GrantEnvelope {grant:Grant;signed:Signature;}
+export interface Intent {grantId:string;grantVersion:number;ownerAccountId:string;agentPublicKey:string;network:string;request:PaymentRequest;}
+export interface IntentEnvelope {intent:Intent;signed:Signature;}
+export function canonical(value:any):string{if(Array.isArray(value))return `[${value.map(canonical).join(',')}]`;if(value&&typeof value==='object')return `{${Object.keys(value).sort().map(k=>`${JSON.stringify(k)}:${canonical(value[k])}`).join(',')}}`;return JSON.stringify(value);}
+export function message(kind:'grant'|'intent'|'receipt',value:unknown,owner:string){const text=`Leash ${kind} v1\n${canonical(value)}`;return {message:text,recipient:`leash.${kind}.${owner}`,nonce:createHash('sha256').update(text).digest()};}
+export function nepHash(payload:{message:string;recipient:string;nonce:Uint8Array}){const schema={struct:{message:'string',nonce:{array:{type:'u8',len:32}},recipient:'string',callbackUrl:{option:'string'}}};const prefix=serialize('u32',2147484061);const body=serialize(schema,payload);return createHash('sha256').update(prefix).update(body).digest();}
+export function verifyCrypto(kind:'grant'|'intent'|'receipt',value:unknown,owner:string,signed:Signature,expectedKey?:string){if(expectedKey&&signed.publicKey!==expectedKey)throw new Error('Signature key mismatch.');if(!PublicKey.fromString(signed.publicKey).verify(nepHash(message(kind,value,owner)),Buffer.from(signed.signature,'base64')))throw new Error('Signature verification failed.');}

@@ -1,0 +1,41 @@
+{
+  "name": "leash",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && node scripts/build.mjs",
+    "test": "tsx --test tests/*.test.ts",
+    "start": "npm run build && node --import tsx app/server.ts",
+    "test:browser": "node --import tsx scripts/browser-check.ts",
+    "owner": "node --import tsx scripts/owner.ts",
+    "agent": "tsx scripts/agent.ts",
+    "setup:plan": "node --import tsx scripts/native-setup.ts",
+    "setup:execute": "node --import tsx scripts/native-setup.ts --execute",
+    "private-signer": "node --import tsx scripts/private-signer.ts",
+    "test:native": "node --import tsx --test tests/native-policy.test.ts",
+    "check:cli": "node --import tsx --test tests/cli.test.ts"
+  },
+  "dependencies": {
+    "@hot-labs/near-connect": "^0.12.0",
+    "borsh": "^2.0.0",
+    "near-api-js": "7.5.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.1",
+    "esbuild": "0.25.12",
+    "near-workspaces": "5.0.0",
+    "playwright": "1.65.1",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3"
+  },
+  "overrides": {
+    "tar": "7.5.23",
+    "decode-uri-component": "0.5.1"
+  },
+  "license": "MIT"
+}

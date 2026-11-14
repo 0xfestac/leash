@@ -1,0 +1,11 @@
+import {SignerClient} from '../leash/signer-client.js';
+import {Ledger} from '../leash/ledger.js';import {loadLiveConfig,Chain} from '../leash/live.js';import {AgentService} from '../leash/signer.js';import {liveServer} from './http.js';
+const host=process.env.LEASH_HOST||'127.0.0.1',port=Number(process.env.PORT||'3000');
+const origin=process.env.LEASH_PUBLIC_ORIGIN||`http://127.0.0.1:${port}`;const parsed=new URL(origin);if(parsed.origin!==origin||parsed.username||parsed.password||!['http:','https:'].includes(parsed.protocol))throw new Error('Configure an exact application origin.');
+if(!['127.0.0.1','localhost','::1'].includes(host)&&parsed.protocol!=='https:')throw new Error('Public app requires an HTTPS origin.');
+for(const name of ['NEAR_OWNER_PRIVATE_KEY','NEAR_PRIVATE_KEY'])if(name in process.env)throw new Error('Do not pass owner keys into the public app environment. Use the isolated setup/admin CLI.');
+const config=await loadLiveConfig(process.env.LEASH_CONFIG_PATH),chain=config?new Chain(config,new SignerClient(process.env.LEASH_SIGNER_SOCKET||'.private-signer/signer.sock')):null;
+const ledger=new Ledger(process.env.LEASH_LEDGER_PATH||'.runtime/live-ledger.json');await ledger.init();
+const agents=chain?new AgentService(chain,ledger,process.env.LEASH_AGENT_KEY_DIR||'.agent-keys'):null;
+const server=liveServer({config,chain,ledger,agents,origin});server.on('error',async(error)=>{await ledger.close();console.error((error as NodeJS.ErrnoException).code||'Server startup failed');process.exitCode=1;});server.listen(port,host,()=>console.log(`Leash live mainnet app: ${origin}`));
+function close(){server.close(async()=>{await agents?.drain();await ledger.close();process.exit(0);});}process.on('SIGTERM',close);process.on('SIGINT',close);

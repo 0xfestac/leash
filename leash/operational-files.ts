@@ -1,0 +1,3 @@
+import{mkdir,open,rename,unlink}from'node:fs/promises';import{dirname}from'node:path';import{randomUUID}from'node:crypto';
+/** Persist operational setup data securely, including on a fresh checkout. */
+export async function writePrivateJson(path:string,value:unknown){await mkdir(dirname(path),{recursive:true,mode:0o700});const temp=`${path}.${randomUUID()}.tmp`;const file=await open(temp,'wx',0o600);try{await file.writeFile(JSON.stringify(value,null,2));await file.sync();}finally{await file.close();}try{await rename(temp,path);}catch(e){await unlink(temp).catch(()=>{});throw e;}const directory=await open(dirname(path),'r');try{await directory.sync();}finally{await directory.close();}}
